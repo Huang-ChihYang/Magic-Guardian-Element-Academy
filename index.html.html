@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>魔法守護者 - Teachable Machine AI 互動遊戲</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- TensorFlow.js and Teachable Machine Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.3/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8.3/dist/teachablemachine-pose.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        /* Elements Background Magic Glows */
+        .bg-fire {
+            background: radial-gradient(circle at center, rgba(239, 68, 68, 0.4) 0%, rgba(15, 23, 42, 0.95) 70%), url('https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80') center/cover;
+        }
+        .bg-water {
+            background: radial-gradient(circle at center, rgba(59, 130, 246, 0.4) 0%, rgba(15, 23, 42, 0.95) 70%), url('https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1200&q=80') center/cover;
+        }
+        .bg-leaf {
+            background: radial-gradient(circle at center, rgba(34, 197, 94, 0.4) 0%, rgba(15, 23, 42, 0.95) 70%), url('https://images.unsplash.com/photo-1511497584788-8767611136f6?auto=format&fit=crop&w=1200&q=80') center/cover;
+        }
+        .bg-neutral {
+            background: radial-gradient(circle at center, rgba(148, 163, 184, 0.2) 0%, rgba(15, 23, 42, 0.95) 70%);
+        }
+
+        /* Particle effects overlay canvas */
+        #magicCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* Glowing text effects */
+        .glow-text-fire { text-shadow: 0 0 15px rgba(239, 68, 68, 0.8), 0 0 25px rgba(239, 68, 68, 0.5); }
+        .glow-text-water { text-shadow: 0 0 15px rgba(59, 130, 246, 0.8), 0 0 25px rgba(59, 130, 246, 0.5); }
+        .glow-text-leaf { text-shadow: 0 0 15px rgba(34, 197, 94, 0.8), 0 0 25px rgba(34, 197, 94, 0.5); }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .pulse-effect {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-neutral transition-all duration-700 relative" id="bodyBg">
+
+    <!-- Magic Particle Canvas Overlay -->
+    <canvas id="magicCanvas"></canvas>
+
+    <!-- HEADER / NAVIGATION -->
+    <header class="w-full glass-card border-b border-slate-700/50 p-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
+                    <i class="fa-solid font-bold fa-wand-magic-sparkles text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black bg-gradient-to-r from-purple-400 via-pink-400 to-amber-300 bg-clip-text text-transparent">
+                        魔法守護者：AI 學院
+                    </h1>
+                    <p class="text-xs text-slate-400">Teachable Machine 辨識互動網頁遊戲</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <button onclick="toggleModal('guideModal')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition flex items-center gap-2 border border-slate-700">
+                    <i class="fa-solid fa-book-open text-amber-400"></i> 教學與說明
+                </button>
+                <div class="glass-card px-4 py-1.5 rounded-full flex items-center space-x-2 border border-amber-500/30">
+                    <i class="fa-solid fa-trophy text-amber-400"></i>
+                    <span class="text-xs text-slate-300">得分:</span>
+                    <span id="scoreDisplay" class="text-lg font-black text-amber-400">0</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN GAME LAYOUT -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 z-20">
+        
+        <!-- LEFT PANEL: Camera / Mic Input & Recognition Info -->
+        <section class="lg:col-span-7 flex flex-col space-y-4">
+            <div class="glass-card rounded-2xl p-4 flex flex-col flex-1 shadow-2xl relative overflow-hidden">
+                
+                <!-- Status Badge Header -->
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex items-center space-x-2">
+                        <span id="statusIndicator" class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></span>
+                        <span id="statusText" class="text-xs font-semibold text-slate-300 uppercase tracking-wider">未連接模型</span>
+                    </div>
+                    <span id="modelTypeBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-mono border border-slate-700">
+                        模式: 未指定
+                    </span>
+                </div>
+
+                <!-- Input Display Area (Webcam / Canvas / Audio Visualizer) -->
+                <div class="relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center group shadow-inner">
+                    <!-- Video Stream / Pose Canvas -->
+                    <div id="webcamContainer" class="w-full h-full flex items-center justify-center relative hidden">
+                        <!-- Canvas created dynamically -->
+                    </div>
+
+                    <!-- Audio Visualizer (when Audio Model active) -->
+                    <div id="audioVisualizer" class="hidden w-full h-full flex flex-col items-center justify-center space-y-4 p-6">
+                        <div class="w-24 h-24 rounded-full bg-indigo-500/20 border-2 border-indigo-400 flex items-center justify-center pulse-effect">
+                            <i id="micIcon" class="fa-solid fa-microphone text-4xl text-indigo-400"></i>
+                        </div>
+                        <p class="text-sm text-slate-400">語音聆聽中...</p>
+                    </div>
+
+                    <!-- Idle / Placeholder Overlay -->
+                    <div id="placeholderView" class="text-center p-6 space-y-3">
+                        <i class="fa-solid fa-camera-retro text-5xl text-slate-700"></i>
+                        <p class="text-slate-400 text-sm">請於下方輸入您的 Teachable Machine 模型連結<br>或開啟「模擬測試模式」體驗</p>
+                    </div>
+
+                    <!-- Active Recognition Overlay Banner -->
+                    <div id="recognitionBanner" class="absolute bottom-3 left-3 right-3 bg-slate-900/80 backdrop-blur-md p-3 rounded-xl border border-slate-700/80 flex items-center justify-between opacity-0 transition-opacity duration-300">
+                        <div>
+                            <p class="text-xs text-slate-400">目前判定姿勢/類別</p>
+                            <h2 id="currentPredictionName" class="text-xl font-bold text-white uppercase tracking-wide">--</h2>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-slate-400">信心分數</p>
+                            <span id="currentConfidence" class="text-xl font-extrabold text-indigo-400">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recognition Confidence Bars Section -->
+                <div class="mt-4 space-y-2">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-chart-simple text-indigo-400"></i> 即時分類信心度 (Classes Confidence)
+                    </h3>
+                    <div id="labelContainer" class="space-y-2 max-h-36 overflow-y-auto pr-1">
+                        <!-- Dynamic Label Progress Bars populated via JS -->
+                        <div class="text-xs text-slate-500 italic text-center py-2">尚未載入分類數據...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: Game Controls, Model Loader & Interactive Quest -->
+        <section class="lg:col-span-5 flex flex-col space-y-4">
+            
+            <!-- Model Loader Box -->
+            <div class="glass-card rounded-2xl p-5 shadow-xl space-y-4 border border-slate-700/60">
+                <h3 class="text-md font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-link text-purple-400"></i> 載入 Teachable Machine 模型
+                </h3>
+                
+                <div class="space-y-2">
+                    <label class="text-xs text-slate-300">模型 URL 連結 (包含 model.json 的網址)</label>
+                    <div class="flex gap-2">
+                        <input id="modelUrlInput" type="text" placeholder="https://teachablemachine.withgoogle.com/models/xxxxxx/" class="flex-1 bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition">
+                        <button onclick="loadCustomModel()" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-lg shadow-md hover:shadow-purple-500/20 transition">
+                            載入模型
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400">支援 Image (圖片)、Pose (姿勢)、Audio (聲音) 3 種類型</p>
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 flex items-center justify-between">
+                    <span class="text-xs text-slate-400">沒有模型？體驗模擬測試</span>
+                    <button id="simBtn" onclick="toggleSimulationMode()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-400 font-semibold text-xs rounded-lg transition">
+                        <i class="fa-solid fa-flask"></i> 開啟模擬測試
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Quest & Stage Interactive Screen -->
+            <div class="glass-card rounded-2xl p-5 flex-1 flex flex-col justify-between shadow-xl relative overflow-hidden border border-slate-700/60">
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">魔法挑戰任務</span>
+                        <span id="comboBadge" class="text-xs font-black text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30">連擊 x0</span>
+                    </div>
+
+                    <!-- Target Gesture Challenge -->
+                    <div id="targetCard" class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 text-center space-y-2">
+                        <p class="text-xs text-slate-400">請做出以下辨識對應招式以發動魔法：</p>
+                        <div id="targetName" class="text-2xl font-black text-amber-300 glow-text-fire">
+                            【等待模型輸入】
+                        </div>
+                        <p id="targetHint" class="text-xs text-slate-400 italic">載入模型後將自動生成對應任務！</p>
+                    </div>
+
+                    <!-- Magic Status Display -->
+                    <div class="text-center py-4">
+                        <div id="magicAvatar" class="w-20 h-20 mx-auto rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center text-3xl text-slate-500 transition-all duration-300">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <p id="magicMessage" class="mt-3 text-sm font-semibold text-slate-300">發動招式解鎖魔法學院守護陣！</p>
+                    </div>
+                </div>
+
+                <!-- Interactive Manual Actions -->
+                <div class="pt-4 border-t border-slate-800/80 flex gap-2">
+                    <button onclick="castManualSpell()" class="flex-1 py-2.5 bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 border border-indigo-500/30">
+                        <i class="fa-solid fa-bolt"></i> 手動觸發攻擊音效/特效
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- INSTRUCTION MODAL -->
+    <div id="guideModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 hidden">
+        <div class="glass-card max-w-2xl w-full rounded-2xl p-6 space-y-5 border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h2 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <i class="fa-solid fa-graduation-cap"></i> 遊戲操作說明與訓練指南
+                </h2>
+                <button onclick="toggleModal('guideModal')" class="text-slate-400 hover:text-white text-xl">&times;</button>
+            </div>
+
+            <div class="space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                <div class="bg-indigo-950/40 p-3 rounded-lg border border-indigo-800/50">
+                    <h3 class="font-bold text-indigo-300 mb-1">🎯 遊戲目標</h3>
+                    <p>透過訓練好的 Teachable Machine AI 模型，展現特定的**手勢/圖像/聲音/姿勢**，觸發相對應的魔法元素（如：火焰、海浪、森林），獲得分數並完成挑戰！</p>
+                </div>
+
+                <div class="space-y-2">
+                    <h3 class="font-bold text-amber-300">🚀 如何訓練並導入您的模型 (3 步驟)：</h3>
+                    <ol class="list-decimal list-inside space-y-1.5 text-slate-300 pl-1">
+                        <li>造訪 <a href="https://teachablemachine.withgoogle.com/" target="_blank" class="text-amber-400 underline font-semibold">Google Teachable Machine</a>。</li>
+                        <li>選擇 <b>Image Project</b>、<b>Pose Project</b> 或 <b>Audio Project</b>，訓練至少 <b>2 個類別</b>（建議類別名稱可包含：<code>Fire</code>, <code>Water</code>, <code>Leaf</code> 或自訂名稱）。</li>
+                        <li>點擊 <b>Export Model</b> ➔ 點擊 <b>Upload (shareable link)</b> ➔ 複製生成的模型 URL 貼入本頁面的輸入框中並點擊「載入模型」。</li>
+                    </ol>
+                </div>
+
+                <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                    <h3 class="font-bold text-emerald-400">✨ 辨識連動效果說明：</h3>
+                    <ul class="list-disc list-inside space-y-1 text-slate-400">
+                        <li><b>換背景 & 主題色彩：</b>系統會依據最高信心度的分類切換背景與畫面風格。</li>
+                        <li><b>音效與視覺粒子：</b>辨識成功觸發 Web Audio 音效與 Canvas 魔法粒子爆炸。</li>
+                        <li><b>信心分數即時條：</b>畫面顯示每個類別目前的 AI 判定百分比。</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="text-right pt-2 border-t border-slate-800">
+                <button onclick="toggleModal('guideModal')" class="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition">
+                    我知道了，開始遊戲！
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Global Game & Model Variables
+        let model, webcam, maxPredictions, labelContainer;
+        let modelType = null; // 'image', 'pose', 'audio'
+        let isSimulation = false;
+        let simInterval = null;
+        let score = 0;
+        let combo = 0;
+        let currentTargetClass = "";
+        let audioCtx = null;
+
+        // Web Audio Synthesizer for Interactive Sound Effects
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playMagicSound(type) {
+            initAudio();
+            if (!audioCtx) return;
+
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'fire') {
+                // Low rumbling flare
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'water') {
+                // High soothing chime
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(300, now + 0.5);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'leaf') {
+                // Quick rustle pitch
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(500, now + 0.2);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else {
+                // Default magic chime
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        // Particle System Setup
+        const canvas = document.getElementById('magicCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = Math.random() * 6 + 2;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.03 + 0.015;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(this.alpha, 0);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function triggerMagicParticles(color) {
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            for (let i = 0; i < 40; i++) {
+                particles.push(new Particle(centerX, centerY, color));
+            }
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
+        // Model Loader & Initialization
+        async function loadCustomModel() {
+            const urlInput = document.getElementById('modelUrlInput').value.trim();
+            if (!urlInput) {
+                alert('請先輸入有效的 Teachable Machine 模型連結！');
+                return;
+            }
+
+            stopSimulation();
+            updateStatus('載入模型中...', 'bg-amber-500');
+
+            const modelURL = urlInput.endsWith('/') ? urlInput + 'model.json' : urlInput + '/model.json';
+            const metadataURL = urlInput.endsWith('/') ? urlInput + 'metadata.json' : urlInput + '/metadata.json';
+
+            try {
+                // Try Image model first
+                try {
+                    model = await tmImage.load(modelURL, metadataURL);
+                    modelType = 'image';
+                } catch (e) {
+                    // Try Pose model
+                    try {
+                        model = await tmPose.load(modelURL, metadataURL);
+                        modelType = 'pose';
+                    } catch (e2) {
+                        // Try Audio model
+                        model = speechCommands.create("BROWSER_FFT", undefined, modelURL, metadataURL);
+                        await model.ensureModelLoaded();
+                        modelType = 'audio';
+                    }
+                }
+
+                maxPredictions = modelType === 'audio' ? model.wordLabels().length : model.getTotalClasses();
+                setupUIForModel();
+
+                if (modelType === 'image') {
+                    webcam = new tmImage.Webcam(360, 360, true);
+                    await webcam.setup();
+                    await webcam.play();
+                    document.getElementById('webcamContainer').innerHTML = '';
+                    document.getElementById('webcamContainer').appendChild(webcam.canvas);
+                    window.requestAnimationFrame(imageLoop);
+                } else if (modelType === 'pose') {
+                    webcam = new tmPose.Webcam(360, 360, true);
+                    await webcam.setup();
+                    await webcam.play();
+                    document.getElementById('webcamContainer').innerHTML = '';
+                    document.getElementById('webcamContainer').appendChild(webcam.canvas);
+                    window.requestAnimationFrame(poseLoop);
+                } else if (modelType === 'audio') {
+                    model.listen(result => {
+                        handleAudioPredictions(result.scores);
+                    }, {
+                        includeSpectrogram: false,
+                        probabilityThreshold: 0.75,
+                        invokeCallbackOnNoiseAndUnknown: true,
+                        overlapFactor: 0.50
+                    });
+                }
+
+                updateStatus('模型已連線', 'bg-emerald-500');
+                document.getElementById('modelTypeBadge').innerText = `模式: ${modelType.toUpperCase()}`;
+                setupGameChallenge();
+
+            } catch (error) {
+                console.error(error);
+                alert('模型載入失敗！請確認連結是否正確且已公開發布。');
+                updateStatus('載入失敗', 'bg-red-500');
+            }
+        }
+
+        function setupUIForModel() {
+            document.getElementById('placeholderView').classList.add('hidden');
+            document.getElementById('recognitionBanner').classList.remove('opacity-0');
+
+            if (modelType === 'audio') {
+                document.getElementById('webcamContainer').classList.add('hidden');
+                document.getElementById('audioVisualizer').classList.remove('hidden');
+            } else {
+                document.getElementById('audioVisualizer').classList.add('hidden');
+                document.getElementById('webcamContainer').classList.remove('hidden');
+            }
+
+            // Setup Prediction UI Progress Bars
+            labelContainer = document.getElementById('labelContainer');
+            labelContainer.innerHTML = '';
+            const labels = modelType === 'audio' ? model.wordLabels() : model.getClassLabels();
+            
+            for (let i = 0; i < labels.length; i++) {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'space-y-1';
+                labelDiv.innerHTML = `
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-slate-300">${labels[i]}</span>
+                        <span id="prob-text-${i}" class="text-slate-400">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+                        <div id="prob-bar-${i}" class="bg-indigo-500 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+                    </div>
+                `;
+                labelContainer.appendChild(labelDiv);
+            }
+        }
+
+        // Recognition Loops
+        async function imageLoop() {
+            webcam.update();
+            const prediction = await model.predict(webcam.canvas);
+            processPredictions(prediction);
+            window.requestAnimationFrame(imageLoop);
+        }
+
+        async function poseLoop() {
+            webcam.update();
+            const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+            const prediction = await model.predict(posenetOutput);
+            
+            // Draw pose canvas
+            if (webcam.canvas) {
+                const ctx = webcam.canvas.getContext('2d');
+                ctx.drawImage(webcam.canvas, 0, 0);
+                if (pose) {
+                    const minPartConfidence = 0.5;
+                    tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+                    tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+                }
+            }
+            processPredictions(prediction);
+            window.requestAnimationFrame(poseLoop);
+        }
+
+        function handleAudioPredictions(scores) {
+            const labels = model.wordLabels();
+            const predictions = labels.map((label, idx) => ({
+                className: label,
+                probability: scores[idx]
+            }));
+            processPredictions(predictions);
+        }
+
+        // Processing & Interactive Feedback Execution
+        let lastTopClass = "";
+        let triggerCooldown = false;
+
+        function processPredictions(predictions) {
+            let highestProb = 0;
+            let topClass = "";
+
+            for (let i = 0; i < predictions.length; i++) {
+                const prob = predictions[i].probability;
+                const percentage = (prob * 100).toFixed(0);
+                
+                const bar = document.getElementById(`prob-bar-${i}`);
+                const text = document.getElementById(`prob-text-${i}`);
+                if (bar && text) {
+                    bar.style.width = percentage + '%';
+                    text.innerText = percentage + '%';
+                }
+
+                if (prob > highestProb) {
+                    highestProb = prob;
+                    topClass = predictions[i].className;
+                }
+            }
+
+            document.getElementById('currentPredictionName').innerText = topClass || '--';
+            document.getElementById('currentConfidence').innerText = (highestProb * 100).toFixed(0) + '%';
+
+            // Trigger Visual & Sound Reaction on High Confidence (>75%)
+            if (highestProb > 0.75 && topClass !== lastTopClass) {
+                lastTopClass = topClass;
+                applyElementTheme(topClass);
+                checkChallenge(topClass);
+            }
+        }
+
+        // Responsive Themes and Feedback
+        function applyElementTheme(className) {
+            const name = className.toLowerCase();
+            const body = document.getElementById('bodyBg');
+            const avatar = document.getElementById('magicAvatar');
+            const message = document.getElementById('magicMessage');
+
+            body.className = "min-h-screen flex flex-col transition-all duration-700 relative ";
+
+            if (name.includes('fire') || name.includes('火') || name.includes('red')) {
+                body.classList.add('bg-fire');
+                avatar.className = "w-20 h-20 mx-auto rounded-full bg-red-600/30 border-2 border-red-500 flex items-center justify-center text-3xl text-red-400 shadow-lg shadow-red-500/50 scale-110 transition-all";
+                avatar.innerHTML = `<i class="fa-solid fa-fire"></i>`;
+                message.innerText = `🔥 觸發烈火魔法！強烈元素爆發！`;
+                message.className = "mt-3 text-sm font-bold text-red-400 glow-text-fire";
+                triggerMagicParticles('#ef4444');
+                playMagicSound('fire');
+            } else if (name.includes('water') || name.includes('水') || name.includes('blue')) {
+                body.classList.add('bg-water');
+                avatar.className = "w-20 h-20 mx-auto rounded-full bg-blue-600/30 border-2 border-blue-500 flex items-center justify-center text-3xl text-blue-400 shadow-lg shadow-blue-500/50 scale-110 transition-all";
+                avatar.innerHTML = `<i class="fa-solid fa-droplet"></i>`;
+                message.innerText = `💧 觸發水流護盾！展現柔和聖水力量！`;
+                message.className = "mt-3 text-sm font-bold text-blue-400 glow-text-water";
+                triggerMagicParticles('#3b82f6');
+                playMagicSound('water');
+            } else if (name.includes('leaf') || name.includes('草') || name.includes('green') || name.includes('wood')) {
+                body.classList.add('bg-leaf');
+                avatar.className = "w-20 h-20 mx-auto rounded-full bg-emerald-600/30 border-2 border-emerald-500 flex items-center justify-center text-3xl text-emerald-400 shadow-lg shadow-emerald-500/50 scale-110 transition-all";
+                avatar.innerHTML = `<i class="fa-solid fa-leaf"></i>`;
+                message.innerText = `🍃 觸發自然之怒！召喚大地復甦！`;
+                message.className = "mt-3 text-sm font-bold text-emerald-400 glow-text-leaf";
+                triggerMagicParticles('#22c55e');
+                playMagicSound('leaf');
+            } else {
+                body.classList.add('bg-neutral');
+                avatar.className = "w-20 h-20 mx-auto rounded-full bg-purple-600/30 border-2 border-purple-500 flex items-center justify-center text-3xl text-purple-300 shadow-lg shadow-purple-500/50 scale-110 transition-all";
+                avatar.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i>`;
+                message.innerText = `✨ 觸發神秘魔法：${className}`;
+                message.className = "mt-3 text-sm font-bold text-purple-300";
+                triggerMagicParticles('#a855f7');
+                playMagicSound('default');
+            }
+        }
+
+        // Game Challenge Logic
+        function setupGameChallenge() {
+            const labels = isSimulation ? ['Fire', 'Water', 'Leaf'] : (modelType === 'audio' ? model.wordLabels() : model.getClassLabels());
+            if (labels.length === 0) return;
+            
+            currentTargetClass = labels[Math.floor(Math.random() * labels.length)];
+            document.getElementById('targetName').innerText = `【 ${currentTargetClass} 】`;
+            document.getElementById('targetHint').innerText = `做出「${currentTargetClass}」動作或發聲以發動攻擊！`;
+        }
+
+        function checkChallenge(detectedClass) {
+            if (triggerCooldown) return;
+
+            if (detectedClass === currentTargetClass) {
+                triggerCooldown = true;
+                score += 100 + (combo * 20);
+                combo++;
+                document.getElementById('scoreDisplay').innerText = score;
+                document.getElementById('comboBadge').innerText = `連擊 x${combo}`;
+
+                setTimeout(() => {
+                    setupGameChallenge();
+                    triggerCooldown = false;
+                }, 1500);
+            }
+        }
+
+        // Manual Spell Trigger
+        function castManualSpell() {
+            const effects = ['fire', 'water', 'leaf'];
+            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
+            applyElementTheme(randomEffect);
+        }
+
+        // Simulation Mode For Testing
+        function toggleSimulationMode() {
+            if (isSimulation) {
+                stopSimulation();
+            } else {
+                startSimulation();
+            }
+        }
+
+        function startSimulation() {
+            isSimulation = true;
+            document.getElementById('simBtn').innerHTML = `<i class="fa-solid fa-stop"></i> 關閉模擬`;
+            document.getElementById('simBtn').classList.replace('bg-slate-800', 'bg-amber-600');
+            updateStatus('模擬測試模式中', 'bg-amber-500');
+            document.getElementById('modelTypeBadge').innerText = `模式: SIMULATION`;
+
+            const simClasses = ['Fire', 'Water', 'Leaf'];
+            modelType = 'image';
+            
+            // Generate dummy progress bars
+            labelContainer = document.getElementById('labelContainer');
+            labelContainer.innerHTML = '';
+            simClasses.forEach((cls, i) => {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'space-y-1';
+                labelDiv.innerHTML = `
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-slate-300">${cls}</span>
+                        <span id="prob-text-${i}" class="text-slate-400">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+                        <div id="prob-bar-${i}" class="bg-amber-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                `;
+                labelContainer.appendChild(labelDiv);
+            });
+
+            document.getElementById('placeholderView').classList.add('hidden');
+            document.getElementById('recognitionBanner').classList.remove('opacity-0');
+            setupGameChallenge();
+
+            simInterval = setInterval(() => {
+                const activeIdx = Math.floor(Math.random() * simClasses.length);
+                const predictions = simClasses.map((cls, idx) => ({
+                    className: cls,
+                    probability: idx === activeIdx ? 0.92 : (Math.random() * 0.1)
+                }));
+                processPredictions(predictions);
+            }, 3000);
+        }
+
+        function stopSimulation() {
+            isSimulation = false;
+            if (simInterval) clearInterval(simInterval);
+            document.getElementById('simBtn').innerHTML = `<i class="fa-solid fa-flask"></i> 開啟模擬測試`;
+            document.getElementById('simBtn').classList.replace('bg-amber-600', 'bg-slate-800');
+            updateStatus('未連接模型', 'bg-red-500');
+        }
+
+        function updateStatus(text, bgClass) {
+            document.getElementById('statusText').innerText = text;
+            document.getElementById('statusIndicator').className = `w-3 h-3 rounded-full animate-pulse ${bgClass}`;
+        }
+
+        function toggleModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.classList.toggle('hidden');
+        }
+    </script>
+</body>
+</html>
